@@ -12,7 +12,7 @@ char_to_label = {str(i): i for i in range(10)}  # 0-9
 char_to_label.update({chr(i + ord('A')): i + 10 for i in range(26)})  # A-Z
 
 # Number of samples
-num_train_samples = 1000  # Number of training samples
+num_train_samples = 10000  # Number of training samples
 num_val_samples = 2000    # Number of validation samples
 
 # Font path for the license plate generation
@@ -55,7 +55,7 @@ model.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
 
-num_epochs = 10
+num_epochs = 30
 
 # Lists to store loss and accuracy values
 train_losses = []
