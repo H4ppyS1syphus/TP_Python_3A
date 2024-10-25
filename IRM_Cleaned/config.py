@@ -26,7 +26,7 @@ OUTPUT_HTML = os.path.join(BASE_DIR, 'mri_csf_visualization_2.html')
 OUTPUT_SLICES_DIR = os.path.join(BASE_DIR, 'slices')
 
 # K-Means Parameters
-K = 5  # Number of clusters
+K = 8  # Number of clusters
 BATCH_SIZE = 10000  # For MiniBatchKMeans
 
 # Morphological Operations

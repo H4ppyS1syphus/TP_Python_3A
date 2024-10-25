@@ -127,6 +127,14 @@ def denoise_image(original_img, denoised_tiff_path):
             )
             denoised_img[i, :, :] = denoised_slice
             logging.info(f"Slice {i}: Denoising complete.")
+            
+            # Explicitly delete variables to free memory
+            del img_slice
+            del denoised_slice
+            del sigma_est
+
+        # Delete original image if not needed further
+        del original_img
         
         # Save the denoised image
         save_image(denoised_img, denoised_tiff_path)
@@ -149,49 +157,29 @@ def normalize_intensity(denoised_img):
     intensities_scaled = scaler.fit_transform(intensities)
     denoised_img_normalized = intensities_scaled.reshape(denoised_img.shape)
     
+    # Delete unnecessary variables
+    del intensities
+    del intensities_scaled
+    del scaler
+    
     print("Intensity normalization complete.")
     logging.info("Intensity normalization complete.")
     print_memory_usage()
     log_memory_usage()
     return denoised_img_normalized
 
-def plot_slices(denoised_img_normalized, n_slices, output_dir):
-    """
-    Saves n slices with matplotlib after K-Means clustering.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    total_slices = denoised_img_normalized.shape[0]
-    slice_indices = np.linspace(0, total_slices - 1, n_slices, dtype=int)
-    
-    for idx in slice_indices:
-        plt.figure(figsize=(6, 6))
-        plt.imshow(denoised_img_normalized[idx], cmap='gray')
-        plt.title(f'Normalized Denoised MRI Slice {idx}')
-        plt.axis('off')
-        slice_path = os.path.join(output_dir, f'slice_{idx}.png')
-        plt.savefig(slice_path, bbox_inches='tight')
-        plt.close()
-        print(f"Saved slice {idx} as '{slice_path}'.")
-        logging.info(f"Saved slice {idx} as '{slice_path}'.")
-    
-    print(f"All {n_slices} slices saved to '{output_dir}'.")
-    logging.info(f"All {n_slices} slices saved to '{output_dir}'.")
-
 def compute_neighborhood_statistics(denoised_img_normalized, neighborhood_size=3):
     """
     Computes neighborhood mean and variance for each voxel.
     """
-    print("Computing neighborhood mean...")
-    logging.info("Computing neighborhood mean.")
+    print("Computing neighborhood mean and variance...")
+    logging.info("Computing neighborhood statistics.")
     neighborhood_mean = uniform_filter(denoised_img_normalized, size=neighborhood_size, mode='reflect')
-    
-    print("Computing neighborhood mean of squares...")
-    logging.info("Computing neighborhood mean of squares.")
     neighborhood_mean_sq = uniform_filter(denoised_img_normalized**2, size=neighborhood_size, mode='reflect')
-    
-    print("Computing neighborhood variance...")
-    logging.info("Computing neighborhood variance.")
     neighborhood_variance = neighborhood_mean_sq - neighborhood_mean**2
+    
+    # Delete unnecessary variables
+    del neighborhood_mean_sq
     
     print("Neighborhood statistics computed.")
     logging.info("Neighborhood statistics computed.")
@@ -235,6 +223,11 @@ def visualize_feature_distributions(features, sample_size=100000):
     plt.tight_layout()
     plt.show()
     logging.info("Feature distributions plotted.")
+    
+    # Clear the figure to free memory
+    plt.clf()
+    plt.close('all')
+    del indices
 
 def analyze_feature_distributions(features, sample_size=1000):
     """
@@ -255,6 +248,13 @@ def analyze_feature_distributions(features, sample_size=1000):
     plt.suptitle('Pairwise Feature Relationships (Sampled)', y=1.02)
     plt.show()
     logging.info("Pairwise feature relationships plotted.")
+    
+    # Clear the figure and delete variables to free memory
+    plt.clf()
+    plt.close('all')
+    del features_sample
+    del df_features
+    del indices
 
 def apply_morphology_3d(mask, selem, min_size=64):
     """
@@ -269,18 +269,70 @@ def apply_morphology_3d(mask, selem, min_size=64):
     mask = remove_small_objects(mask, min_size=min_size)
     return mask
 
-def perform_kmeans(features, k=5, batch_size=10000):
+def perform_kmeans(features, denoised_img_shape, k=5, batch_size=10000, connectivity_weight=0.1):
     """
-    Performs MiniBatch K-Means clustering on the provided features.
+    Performs MiniBatch K-Means clustering on the provided features, including spatial connectivity.
+
+    Parameters:
+    - features: numpy array of shape (n_samples, n_features)
+    - denoised_img_shape: tuple representing the shape of the denoised image (num_slices, height, width)
+    - k: number of clusters
+    - batch_size: size of mini-batches for the MiniBatchKMeans algorithm
+    - connectivity_weight: float, weight for the spatial connectivity features
+
+    Returns:
+    - kmeans: trained MiniBatchKMeans object
     """
-    print("Performing MiniBatch K-means clustering...")
-    logging.info(f"Performing MiniBatch K-Means clustering with k={k}, batch_size={batch_size}.")
+    print("Performing MiniBatch K-means clustering with spatial connectivity...")
+    logging.info(f"Performing MiniBatch K-Means clustering with k={k}, batch_size={batch_size}, connectivity_weight={connectivity_weight}.")
+
+    # Get the spatial coordinates
+    num_slices, height, width = denoised_img_shape
+    z_coords, y_coords, x_coords = np.meshgrid(
+        np.arange(num_slices),
+        np.arange(height),
+        np.arange(width),
+        indexing='ij'
+    )
+
+    # Flatten and stack the spatial coordinates
+    spatial_features = np.stack((
+        z_coords.flatten(),
+        y_coords.flatten(),
+        x_coords.flatten()
+    ), axis=1)
+
+    # Normalize spatial features
+    scaler = StandardScaler()
+    spatial_features_scaled = scaler.fit_transform(spatial_features)
+
+    # Apply connectivity weight
+    spatial_features_scaled *= connectivity_weight
+
+    # Combine original features with spatial features
+    features_with_connectivity = np.hstack((features, spatial_features_scaled))
+
+    # Delete spatial features to free memory
+    del spatial_features
+    del spatial_features_scaled
+    del z_coords
+    del y_coords
+    del x_coords
+    del scaler
+
+    print(f"Features shape after adding spatial connectivity: {features_with_connectivity.shape}")
+    logging.info(f"Features shape after adding spatial connectivity: {features_with_connectivity.shape}")
+
+    # Perform K-Means clustering
     kmeans = MiniBatchKMeans(n_clusters=k, random_state=42, batch_size=batch_size)
-    kmeans.fit(features)
-    logging.info("Clustering complete.")
-    print("Clustering complete.")
+    kmeans.fit(features_with_connectivity)
+    logging.info("Clustering complete with spatial connectivity.")
+    print("Clustering complete with spatial connectivity.")
     print_memory_usage()
     log_memory_usage()
+
+    # Delete features to free memory
+    del features_with_connectivity
     return kmeans
 
 def create_refined_masks(clustered_img, denoised_img_normalized, k, selem, min_size, masks_dir):
@@ -290,35 +342,35 @@ def create_refined_masks(clustered_img, denoised_img_normalized, k, selem, min_s
     os.makedirs(masks_dir, exist_ok=True)
     refined_masks = {}
     cluster_means = []
-    
+
     for i in range(k):
         print(f"\nProcessing Cluster {i}...")
         logging.info(f"Processing Cluster {i}.")
-        
+
         cluster_mask = (clustered_img == i)
         voxel_count = cluster_mask.sum()
         logging.info(f"Cluster {i}: Initial voxel count = {voxel_count}.")
         print(f"  Cluster {i} mask voxel count: {voxel_count}")
-        
+
         refined_mask = apply_morphology_3d(cluster_mask, selem, min_size)
         refined_voxel_count = refined_mask.sum()
         logging.info(f"Cluster {i}: Refined voxel count = {refined_voxel_count}.")
         print(f"  Cluster {i} refined mask voxel count: {refined_voxel_count}")
-        
+
         if refined_voxel_count == 0:
             print(f"  Warning: Refined mask for Cluster {i} is empty. Consider adjusting morphological parameters.")
             logging.warning(f"Refined mask for Cluster {i} is empty.")
-        
+
         # Save the refined mask
         mask_filename = f'csf_mask_class_{i}_refined_2.tif'
         mask_path = os.path.join(masks_dir, mask_filename)
         tiff.imwrite(mask_path, refined_mask.astype(np.uint8) * 255, imagej=True)
         print(f"  Refined mask for Cluster {i} saved as '{mask_filename}'.")
         logging.info(f"Refined mask for Cluster {i} saved as '{mask_filename}'.")
-        
+
         # Store in dictionary
         refined_masks[i] = refined_mask
-        
+
         # Compute mean intensity for the cluster
         if voxel_count > 0:
             cluster_mean = denoised_img_normalized.flatten()[clustered_img.flatten() == i].mean()
@@ -327,18 +379,24 @@ def create_refined_masks(clustered_img, denoised_img_normalized, k, selem, min_s
         cluster_means.append(cluster_mean)
         logging.info(f"Cluster {i}: Mean Intensity = {cluster_mean}")
         print(f"Cluster {i}: Mean Intensity = {cluster_mean}")
-    
+
+        # Delete variables to free memory
+        del cluster_mask
+        del refined_voxel_count
+
     # Identify the cluster with the lowest mean intensity as CSF
     csf_cluster = np.argmin(cluster_means)
     print(f"CSF is identified as cluster {csf_cluster}.")
     logging.info(f"CSF is identified as cluster {csf_cluster}.")
-    
+
+    # Delete variables to free memory
+    del cluster_means
     return refined_masks, csf_cluster
 
 def plot_refined_masks_on_slices(refined_masks, denoised_img_normalized, slice_indices, k, output_dir):
     """
     Plots and saves refined masks overlaid on specified slices.
-    
+
     Parameters:
     - refined_masks: Dictionary of refined mask arrays.
     - denoised_img_normalized: 3D numpy array of the normalized denoised MRI image.
@@ -346,7 +404,7 @@ def plot_refined_masks_on_slices(refined_masks, denoised_img_normalized, slice_i
     - k: Number of clusters/masks.
     - output_dir: Directory where the overlay images will be saved.
     """
-    
+
     for slice_idx in slice_indices:
         if slice_idx < denoised_img_normalized.shape[0]:
             for cluster_idx in range(k):
@@ -354,26 +412,30 @@ def plot_refined_masks_on_slices(refined_masks, denoised_img_normalized, slice_i
                 if refined_mask is None:
                     logging.warning(f"No refined mask found for cluster {cluster_idx}. Skipping.")
                     continue
-                
+
                 # Check if slice index is within bounds for the mask
                 if slice_idx >= refined_mask.shape[0]:
                     print(f"Slice index {slice_idx} is out of bounds for cluster {cluster_idx} mask with {refined_mask.shape[0]} slices.")
                     logging.warning(f"Slice index {slice_idx} is out of bounds for cluster {cluster_idx} mask.")
                     continue
-                
+
                 plt.figure(figsize=(6, 6))
                 plt.imshow(denoised_img_normalized[slice_idx], cmap='gray')
                 plt.imshow(refined_mask[slice_idx], cmap='jet', alpha=0.5)
                 plt.title(f'Cluster {cluster_idx} Refined Mask Overlay on Slice {slice_idx}')
                 plt.axis('off')
-                
+
                 # Define the filename and path
                 slice_path = os.path.join(output_dir, f'slice_{slice_idx}_cluster_{cluster_idx}_overlay.png')
                 plt.savefig(slice_path, bbox_inches='tight')
                 plt.close()
-                
+
                 print(f"Saved slice {slice_idx} overlay for Cluster {cluster_idx} as '{slice_path}'.")
                 logging.info(f"Saved slice {slice_idx} overlay for Cluster {cluster_idx} as '{slice_path}'.")
+
+                # Delete variables to free memory
+                plt.clf()
+                plt.close('all')
         else:
             print(f"Slice index {slice_idx} is out of bounds for image with {denoised_img_normalized.shape[0]} slices.")
             logging.warning(f"Slice index {slice_idx} is out of bounds for the denoised image.")
@@ -384,6 +446,9 @@ def extract_surface_mesh(mask_binary, step_size=2, mc_threshold=0.5):
     Extracts a surface mesh from a binary mask using Marching Cubes.
     """
     verts, faces, normals, values = marching_cubes(mask_binary, level=mc_threshold, step_size=step_size, allow_degenerate=False)
+    # Delete variables to free memory
+    del normals
+    del values
     return verts, faces
 
 def decimate_mesh(verts, faces, target_reduction=0.5):
@@ -392,19 +457,24 @@ def decimate_mesh(verts, faces, target_reduction=0.5):
     """
     faces_pv = np.hstack([np.full((faces.shape[0], 1), 3), faces]).astype(np.int32)
     csf_mesh = pv.PolyData(verts, faces_pv)
-    
+
     print(f"Initial mesh has {csf_mesh.n_points} points and {csf_mesh.n_faces} faces.")
     logging.info(f"Initial mesh has {csf_mesh.n_points} points and {csf_mesh.n_faces} faces.")
     print_memory_usage()
     log_memory_usage()
-    
+
     csf_mesh_decimated = csf_mesh.decimate(target_reduction, inplace=False)
-    
+
     print(f"Decimated mesh has {csf_mesh_decimated.n_points} points and {csf_mesh_decimated.n_faces} faces.")
     logging.info(f"Decimated mesh has {csf_mesh_decimated.n_points} points and {csf_mesh_decimated.n_faces} faces.")
     print_memory_usage()
     log_memory_usage()
-    
+
+    # Delete variables to free memory
+    del verts
+    del faces
+    del faces_pv
+    del csf_mesh
     return csf_mesh_decimated
 
 def visualize_and_save_html(original_img, denoised_img, refined_masks, k, output_html):
@@ -413,12 +483,18 @@ def visualize_and_save_html(original_img, denoised_img, refined_masks, k, output
     """
     print("\nStarting visualization with PyVista...")
     logging.info("Starting visualization with PyVista.")
-    
-    # Initialize PyVista Plotter
-    rows = 3
+
+    # Calculate the total number of subplots needed
+    total_subplots = 2 + k  # 2 for MRI volumes, k for clusters
+
+    # Determine the number of rows and columns
+    import math
     cols = 3
-    plotter = pv.Plotter(shape=(rows, cols), title="MRI and CSF Masks Visualization", window_size=[1800, 900])
-    
+    rows = math.ceil(total_subplots / cols)
+
+    # Initialize PyVista Plotter
+    plotter = pv.Plotter(shape=(rows, cols), title="MRI and CSF Masks Visualization", window_size=[1800, 300 * rows])
+
     # -----------------------------
     # 1. Original MRI Volume
     # -----------------------------
@@ -430,10 +506,9 @@ def visualize_and_save_html(original_img, denoised_img, refined_masks, k, output
     except TypeError as e:
         print(f"Failed to add Original MRI volume: {e}")
         logging.error(f"Failed to add Original MRI volume: {e}")
-        plotter.add_volume(original_img, cmap="gray", opacity="linear", name="Original MRI")
     plotter.add_text("Original MRI", position="upper_left", font_size=10)
     plotter.show_axes()
-    
+
     # -----------------------------
     # 2. Denoised MRI Volume
     # -----------------------------
@@ -445,44 +520,53 @@ def visualize_and_save_html(original_img, denoised_img, refined_masks, k, output
     except TypeError as e:
         print(f"Failed to add Denoised MRI volume: {e}")
         logging.error(f"Failed to add Denoised MRI volume: {e}")
-        plotter.add_volume(denoised_img, cmap="coolwarm", opacity="linear", name="Denoised MRI")
     plotter.add_text("Denoised MRI", position="upper_left", font_size=10)
     plotter.show_axes()
-    
+
     # -----------------------------
-    # 3-7. CSF Mask Overlays
+    # 3+. CSF Mask Overlays
     # -----------------------------
     for cluster_idx in range(k):
         mesh = refined_masks.get(cluster_idx)
         if mesh is None:
             continue  # Skip if mask is not available
-        
+
         print(f"Adding Mask {cluster_idx} mesh to visualization...")
         logging.info(f"Adding Mask {cluster_idx} mesh to visualization.")
-        
+
         # Extract surface mesh
         mask_binary = (mesh > 0).astype(np.uint8)
         verts, faces = extract_surface_mesh(mask_binary)
-        
+
         # Decimate mesh
         mesh_decimated = decimate_mesh(verts, faces)
-        
+
+        # Calculate subplot indices
+        subplot_idx = cluster_idx + 2  # Offset by 2 for the initial MRI volumes
+        row = subplot_idx // cols
+        col = subplot_idx % cols
+
         # Add mesh to plotter
-        plotter.subplot((cluster_idx + 2) // cols, (cluster_idx + 2) % cols)  # Adjust subplot position
+        plotter.subplot(row, col)
         plotter.add_mesh(mesh_decimated, color="red", opacity=0.5, show_edges=False, label=f"Mask {cluster_idx}")
         plotter.add_text(f"Mask {cluster_idx}", position="upper_left", font_size=10)
         plotter.show_axes()
-    
+
+        # Free memory
+        del mask_binary
+        del mesh_decimated
+
     # -----------------------------
     # Optional: Hide unused subplots
     # -----------------------------
     for r in range(rows):
         for c in range(cols):
-            if (r, c) not in [(0, 0), (0, 1)] + [(int((idx + 2) / cols), (idx + 2) % cols) for idx in range(k)]:
+            idx = r * cols + c
+            if idx >= total_subplots:
                 plotter.subplot(r, c)
                 plotter.remove_actor('background')
                 plotter.hide_axes()
-    
+
     # -----------------------------
     # Save Visualization as HTML
     # -----------------------------
@@ -491,13 +575,19 @@ def visualize_and_save_html(original_img, denoised_img, refined_masks, k, output
     plotter.export_html(output_html)
     print(f"Visualization successfully saved to '{output_html}'.")
     logging.info(f"Visualization successfully saved to '{output_html}'.")
-    
+
     # -----------------------------
     # Close the Plotter
     # -----------------------------
     plotter.close()
     print_memory_usage()
     log_memory_usage()
+
+    # Delete variables to free memory
+    del plotter
+    del refined_masks
+    del original_img
+    del denoised_img
 
 def extract_and_decimate_meshes(refined_masks, denoised_img_normalized, k):
     """
@@ -506,23 +596,32 @@ def extract_and_decimate_meshes(refined_masks, denoised_img_normalized, k):
     """
     decimated_meshes = []
     mesh_labels = []
-    
+
     for cluster_idx in range(k):
         mesh = refined_masks.get(cluster_idx)
         if mesh is None:
             continue  # Skip if mask is not available
-        
+
         print(f"Processing Mesh for Cluster {cluster_idx}...")
         logging.info(f"Processing Mesh for Cluster {cluster_idx}.")
-        
+
         # Extract surface mesh
         mask_binary = (mesh > 0).astype(np.uint8)
         verts, faces = extract_surface_mesh(mask_binary)
-        
+
         # Decimate mesh
         mesh_decimated = decimate_mesh(verts, faces)
-        
+
         decimated_meshes.append(mesh_decimated)
         mesh_labels.append(f"Mask {cluster_idx}")
-    
+
+        # Delete variables to free memory
+        del mask_binary
+        del verts
+        del faces
+        del mesh
+
+    # Delete variables to free memory
+    del refined_masks
+    del denoised_img_normalized
     return decimated_meshes, mesh_labels
