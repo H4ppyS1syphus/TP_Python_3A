@@ -6,6 +6,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MASKS_DIR = os.path.join(BASE_DIR, 'masks')
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+PLOT_DIR = os.path.join(BASE_DIR, 'plots')
 
 # File Paths
 ORIGINAL_MRI_PATH = os.path.join('mri_data', 'csf2.tif')  # Original MRI
@@ -22,16 +23,16 @@ MASK_FILENAMES = [
 ]
 
 # Visualization
-OUTPUT_HTML = os.path.join(BASE_DIR, 'mri_csf_visualization_2.html')
+OUTPUT_HTML = os.path.join(BASE_DIR, 'ALL_clusters.html')
 OUTPUT_SLICES_DIR = os.path.join(BASE_DIR, 'slices')
 
 # K-Means Parameters
-K = 8  # Number of clusters
+K = 5  # Number of clusters
 BATCH_SIZE = 10000  # For MiniBatchKMeans
 
 # Morphological Operations
-STRUCTURING_ELEMENT_RADIUS = 1  # Radius for structuring element
-MIN_SIZE = 1  # Minimum size for small object removal
+STRUCTURING_ELEMENT_RADIUS = 3  # Radius for structuring element
+MIN_SIZE = 5  # Minimum size for small object removal
 
 # Logging
 DEFAULT_LOG_FILE = os.path.join(LOGS_DIR, 'execution.log')

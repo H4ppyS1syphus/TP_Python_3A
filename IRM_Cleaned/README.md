@@ -16,15 +16,20 @@
 
 The **MRI and CSF Mask Processing Pipeline** is a Python-based project for processing Magnetic Resonance Imaging (MRI) data and Cerebrospinal Fluid (CSF) masks. The pipeline performs the following tasks:
 
-- 📥 **Image Loading and Denoising**: Loads original MRI images and applies Non-Local Means denoising for enhanced image quality.
+### **Key Functionalities:**
+
+- 📥 **Image Loading and Denoising**: Loads original MRI images and applies Non-Local Means denoising to enhance image quality.
 - 🎚️ **Intensity Normalization**: Standardizes intensity values across datasets for consistent analysis.
 - 🧮 **Feature Extraction**: Computes neighborhood statistics (mean and variance) to enrich the feature set.
-- 📊 **Clustering**: Segments MRI data into clusters using MiniBatch K-Means.
+- 📊 **Clustering**: Segments MRI data into clusters using MiniBatch K-Means with spatial connectivity.
 - 🧹 **Morphological Operations**: Cleans and refines segmented masks by removing noise and filling gaps.
 - 🗺️ **Mesh Extraction and Decimation**: Generates surface meshes from binary masks and optimizes them for visualization.
 - 🖥️ **Visualization**: Provides interactive 3D visualizations of MRI data and refined CSF masks using PyVista.
-- 📈 **Feature Distribution Analysis (Optional)**: Uses seaborn pairplot for analyzing feature relationships.
+- 📈 **Feature Distribution Analysis (Optional)**: Utilizes seaborn pairplots for analyzing feature relationships.
 - 💾 **Output Options**: Saves visualizations as HTML files, exports selected slices as images, and logs execution details.
+- 🔄 **Memory Optimization**: Efficient memory management for handling large datasets.
+- 📝 **Logging Support**: Detailed logs for monitoring and debugging pipeline execution.
+
 
 This pipeline is modular and customizable, suitable for both research and clinical applications.
 
