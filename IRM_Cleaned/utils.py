@@ -805,6 +805,13 @@ def calculate_csf_volume(csf_mask, mri_image, voxel_dimensions):
     """
     try:
         # Ensure that the mask and MRI image have the same shape
+        if csf_mask is None:
+            # If the CSF mask is not provided, return full volume 
+            csf_volume_mm3 = np.sum(mri_image > 0) * np.prod(voxel_dimensions)
+            logging.info(f"Calculated CSF Volume: {csf_volume_mm3} mm³")
+            print(f"Calculated CSF Volume: {csf_volume_mm3} mm³")
+            return csf_volume_mm3
+        
         if csf_mask.shape != mri_image.shape:
             raise ValueError("CSF mask and MRI image must have the same dimensions.")
         

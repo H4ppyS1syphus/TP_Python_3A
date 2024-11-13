@@ -65,6 +65,13 @@ def main():
     
     # ----- Step 1: Load and Denoise the TIFF Image -----
     original_img = load_image(ORIGINAL_MRI_PATH)
+
+    voxel_dimensions = (0.9765635, 0.9765635, 1.0)  # Example values; adjust as needed
+    csf_volume_mm3 = calculate_csf_volume(
+        csf_mask=None,
+        mri_image=original_img,
+        voxel_dimensions=voxel_dimensions
+    )
     denoised_img = denoise_image(original_img, DENOISED_TIFF_PATH)
     
     # Free memory if original image is no longer needed
@@ -296,7 +303,7 @@ def main():
         visualize_good_csf_mask_html(
             denoised_img_before_norm,
             refined_csf_mask,
-            "good_cluster_1.html",
+            "good_cluster_malade.html",
             step_size=2,
             mc_threshold=0.5,
             decimate_reduction=0.5
